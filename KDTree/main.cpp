@@ -118,7 +118,7 @@ public:
 		}
 
 		// ----------------- test ----------------//
-		std::cout << "--------------- leftTreeDataVec --------------" << std::endl;
+		/*std::cout << "--------------- leftTreeDataVec --------------" << std::endl;
 		for (auto it : leftTreeDataVec) {
 			std::cout << it <<std::endl << std::endl;
 		}
@@ -129,6 +129,7 @@ public:
 		}
 		std::cout << "------------------------------------------------" << std::endl;
 		// ---------------------------------------//
+		*/
 
 		if (leftTreeDataVec.size() == 0 && rightTreeDataVec.size() == 0) {
 			root->is_leaf = true;
@@ -150,7 +151,7 @@ public:
 		Node<T> *tmpNode = root;
 			
 		if (tmpNode == nullptr) {
-			tmpNode = new Node();
+			tmpNode = new Node<T>();
 			tmpNode->data = newData;
 			tmpNode->is_leaf = true;
 			
@@ -213,7 +214,7 @@ public:
 				}
 			}
 
-			tmp = nextNode;
+			tmpNode = nextNode;
 		}
 	}
 
@@ -264,6 +265,11 @@ int main()
 
 	tree.buildKDTree(  );
 	std::cout << "count : " << count << std::endl;
+
+	tree.printNodes();
+	std::cout << " ------------------------------ " << std::endl;
+
+	tree.insert( Eigen::Vector2f(8, 7) );
 
 	tree.printNodes();
 
