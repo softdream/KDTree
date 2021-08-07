@@ -2,11 +2,12 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <numeric>
+#include <stack>
 
 template<typename T>
 struct Node
 {
-	Node() :split(0), left(nullptr), right(nullptr), is_leaf(false)
+	Node() :split(0), left(nullptr), right(nullptr), parent(nullptr), is_leaf(false)
 	{
 		data = T::Zero();
 		//std::cout << "data: " << std::endl << data << std::endl;
@@ -21,6 +22,7 @@ struct Node
 	int split;
 	Node *left;
 	Node *right;
+	Node *parent;
 	bool is_leaf;
 };
 
@@ -33,6 +35,7 @@ public:
 	KDTree()
 	{
 		root = new Node<T>();
+		root->is_leaf = true;
 	}
 
 	~KDTree()
@@ -137,29 +140,35 @@ public:
 
 		if (leftTreeDataVec.size() != 0) {
 			root->left = new Node<T>();
+			root->left->parent = root;
 			createTree( leftTreeDataVec, root->left );
 		}
 		
 		if (rightTreeDataVec.size() != 0) {
 			root->right = new Node<T>();
+			root->right->parent = root;
 			createTree( rightTreeDataVec, root->right );
 		}
 	}
 
-	void insert( T &newData )
+	void insert( const T &newData )
 	{
-		Node<T> *tmpNode = root;
-			
-		if (tmpNode == nullptr) {
-			tmpNode = new Node<T>();
-			tmpNode->data = newData;
-			tmpNode->is_leaf = true;
-			
+		if (root == nullptr) {
 			return;
 		}
 
-		if (tmpNode->is_leaf) {
+		Node<T> *tmpNode = root;
+			
+		/*if (tmpNode == nullptr) { // if the tree is empty
+			tmpNode = new Node<T>();
+			tmpNode->data = newData;
+			tmpNode->is_leaf = true;
+			return;
+		}*/
+
+		if (tmpNode->is_leaf) { // there is always a node exists,it is root node
 			tmpNode->is_leaf = false;
+			tmpNode->data = newData;
 
 			float max = 0.0;
 			int partialIndex = 0;
@@ -171,6 +180,8 @@ public:
 				}
 			}
 			tmpNode->split = partialIndex;
+
+			return;
 		}
 
 		while (true) {
@@ -180,6 +191,7 @@ public:
 			if (newData[partialIndex] > tmpNode->data[partialIndex]){
 				if (tmpNode->right == nullptr) {
 					tmpNode->right = new Node<T>();
+					tmpNode->right->parent = tmpNode;
 					tmpNode->right->is_leaf = true;
 					tmpNode->right->split = 1;
 					tmpNode->right->data = newData;
@@ -192,6 +204,7 @@ public:
 			else {
 				if (tmpNode->left == nullptr) {
 					tmpNode->left = new Node<T>();
+					tmpNode->left->parent = tmpNode;
 					tmpNode->left->is_leaf = true;
 					tmpNode->left->split = 1;
 					tmpNode->left->data = newData;
@@ -218,26 +231,200 @@ public:
 		}
 	}
 
-	void printNodes()
+	void printNodes() const
 	{
 		preOrderTravel( root );
 	}
 
-	void preOrderTravel( Node<T> *root )
+	void preOrderTravel( Node<T> *root ) const
 	{
 		if (root != nullptr) {
 			std::cout << "node: " << std::endl << root->data << std::endl;
+			std::cout << "split: " << root->split << std::endl << std::endl;
 
 			preOrderTravel( root->left );
 			preOrderTravel( root->right );
 		}
 	}
 
+	bool deleteNode( const T &data )
+	{
+		if (root == nullptr) {
+			return false;
+		}
+
+		Node<T> **pToCurr = &root;
+		Node<T> *pCurr = root;
+		Node<T> *pDelete = nullptr;
+
+		while (pCurr != nullptr && pCurr->data != data) {
+			if ( data[pCurr->split] <=pCurr->data[pCurr->split] ) { // if data of current less than the delete data
+				std::cout << "pCurr->data[pCurr->split]: " << pCurr->data[pCurr->split] << std::endl;
+				pToCurr = &pCurr->left;
+				pCurr = pCurr->left;
+			}
+			else {
+				std::cout << "pCurr->data[pCurr->split]: " << pCurr->data[pCurr->split] << std::endl;
+				pToCurr = &pCurr->right;
+				pCurr = pCurr->right;
+			}
+		}
+
+		if (pCurr == nullptr) { // not find the element
+			std::cout << "didn't find the delete node ..." << std::endl;
+			return false;
+		}
+
+		pDelete = pCurr;
+
+		// leaf node
+		if (pCurr->left == nullptr && pCurr->right == nullptr) {
+			*pToCurr = nullptr;
+		}
+		else if (pCurr->left == nullptr) {
+			*pToCurr = pCurr->right;
+		}
+		else if (pCurr->right == nullptr) {
+			*pToCurr = pCurr->left;
+		}
+		else {
+			// Replace the deleted node with the left subtree of the deleted node
+			*pToCurr = pCurr->left;
+
+			pCurr = pDelete->left;
+
+			while (pCurr->right != nullptr)
+				pCurr = pCurr->right;
+
+			pCurr->right = pDelete->right;
+		}
+
+		delete pDelete;
+
+		return true;
+	}
+
+	const T nearestNeighborSearchRecursive( const T &goalPoint )
+	{
+		T nearestPoint;
+		Node<T> *tmp = root;
+
+		while (!tmp->is_leaf) {
+			int partialIndex = tmp->split;
+			if (tmp->left != nullptr && goalPoint[partialIndex] < tmp->data[partialIndex]) {
+				tmp = tmp->left;
+			}
+			else if (tmp->right != nullptr) {
+				tmp = tmp->right;
+			}
+		}
+
+		nearestPoint = tmp->data;
+
+		float radius = (goalPoint - nearestPoint).norm();
+
+		bool isLeft = false;
+
+		while (tmp != root) {
+			isLeft = (tmp == tmp->parent->left);
+
+			tmp = tmp->parent;
+			if ((goalPoint - tmp->data).norm() < radius) {
+				nearestPoint = tmp->data;
+				radius = (goalPoint - nearestPoint).norm();
+			}
+
+			int patialIndex = tmp->split;
+
+			if (radius > std::abs(tmp->data[patialIndex] - goalPoint[patialIndex])) {
+				if (isLeft) {
+					searchNearest( goalPoint, radius, tmp->right, nearestPoint );
+				}
+				else {
+					searchNearest( goalPoint, radius, tmp->left, nearestPoint );
+				}
+			}
+		}
+
+		return nearestPoint;
+	}
+
+	void searchNearest(const T &goalPoint, float radius, const Node<T> *root, T &nearestPoint)
+	{
+		if (root == nullptr)
+			return;
+
+		float newRadius = (goalPoint - root->data).norm();
+		if (newRadius < radius) {
+			radius = newRadius;
+			nearestPoint = root->data;
+		}
+
+		searchNearest( goalPoint, radius, root->left, nearestPoint );
+		searchNearest( goalPoint, radius, root->right, nearestPoint );
+	}
+
+	const T nearestNeighborSearch(const T &goalPoint)
+	{
+		Node<T> *tmp = root;
+		T nerestPoint = tmp->data;
+		
+		while (tmp != nullptr) {
+			std::cout << "tmp = " << std::endl << tmp->data << std::endl;
+			searchPath.push( tmp );
+	
+			int split = tmp->split;
+			if (goalPoint[split] <= tmp->data[split]) {
+				tmp = tmp->left;
+			}
+			else {
+				tmp = tmp->right;
+			}
+		}
+
+		nerestPoint = searchPath.top()->data;
+		tmp = searchPath.top();
+		//nerestPoint = root->data;
+		std::cout << "nerestPoint : " << std::endl << nerestPoint << std::endl;
+
+		float maxDist = (nerestPoint - goalPoint).norm();
+		std::cout << "max distance = " << maxDist << std::endl;
+
+		while (!searchPath.empty()) {	
+			Node<T> *backPoint = searchPath.top();
+			searchPath.pop();
+			
+			std::cout << "backPoint: " << std::endl << backPoint->data << std::endl;
+
+			int split = backPoint->split;
+
+			std::cout << "distance = " << (goalPoint - backPoint->data).norm() << std::endl;
+
+			if ((goalPoint - backPoint->data).norm() < maxDist) {
+				if (goalPoint[split] <= backPoint->data[split]) {
+					tmp = backPoint->right;
+				}
+				else {
+					tmp = backPoint->left;
+				}
+				searchPath.push( tmp );
+			}
+
+			std::cout << "nerestPoint : " << std::endl << nerestPoint << std::endl;
+			if ((nerestPoint - goalPoint).norm() > (tmp->data - goalPoint).norm()) {
+				nerestPoint = tmp->data;
+				maxDist = (tmp->data - goalPoint).norm();
+			}
+		}
+
+		return nerestPoint;
+	}
+
 private:
 	Node<T> *root;
 	std::vector<T> dataVec;
-	//std::vector<T> leftTreeDataVec;
-	//std::vector<T> rightTreeDataVec;
+	
+	std::stack<Node<T>*> searchPath;
 };
 
 
@@ -269,9 +456,40 @@ int main()
 	tree.printNodes();
 	std::cout << " ------------------------------ " << std::endl;
 
-	tree.insert( Eigen::Vector2f(8, 7) );
+	//tree.insert( Eigen::Vector2f(3, 6) );
 
-	tree.printNodes();
+//	tree.printNodes();
+
+	/*KDTree<Eigen::Vector2f> tree;
+
+	Eigen::Vector2f node1(7, 2);
+	tree.insert( node1 );
+	
+	Eigen::Vector2f node2(5, 4);
+	tree.insert(node2);
+
+	Eigen::Vector2f node3(2, 3);
+	tree.insert(node3);
+
+	Eigen::Vector2f node4(4, 7);
+	tree.insert(node4);
+
+	Eigen::Vector2f node5(9, 6);
+	tree.insert(node5);
+
+	Eigen::Vector2f node6(8, 1);
+	tree.insert(node6);
+
+	//tree.insert(Eigen::Vector2f(3, 6));
+	//tree.deleteNode( node1 );
+
+	tree.printNodes();*/
+
+	std::cout << "-----------search the kd tree ----------" << std::endl;
+	Eigen::Vector2f goal(2, 4.5);
+	Eigen::Vector2f nerest = tree.nearestNeighborSearch( goal );
+
+	std::cout << std::endl <<nerest << std::endl;
 
 	return 0;
 }
